@@ -1,0 +1,50 @@
+#!/bin/sh
+
+VERSION=$1
+ENVPATH=`pwd`/$2
+
+NDM_HOME="$HOME/.ndm"
+NEO4J_DOWNLOAD_URL="http://dist.neo4j.org/neo4j-community-$VERSION-unix.tar.gz"
+VERSION_FILENAME=`basename $NEO4J_DOWNLOAD_URL`
+VERSION_DIRNAME="neo4j-community-$VERSION"
+VERSION_PATH="$NDM_HOME/$VERSION_FILENAME"
+
+# Ensure the directory is available
+if [ -d "$ENVPATH" ]; then
+    echo "$ENVPATH already exists. Stopping setup"
+    exit 1
+fi
+
+# Ensure the NDM home and version directories are created
+mkdir -p "$NDM_HOME"
+
+# Download if not available
+if [ ! -f "$NDM_HOME/$VERSION_FILENAME" ]; then
+    echo "Checking if version $VERSION is available..."
+
+    response=`curl -I --location --write-out %{http_code} --silent --output /dev/null $NEO4J_DOWNLOAD_URL`
+
+    if [ ! 200 -eq $response ]; then
+        echo "Failed to download version $VERSION (code $response)"
+        echo "Is this a valid version? Network connection available?"
+        echo "A list of available versions can found here:" \
+             "http://www.neo4j.org/download/other_versions"
+        exit 1
+    fi
+
+    echo "Downloading version $VERSION..."
+
+    cd "$NDM_HOME" && curl \
+        --location \
+        --remote-name \
+        --progress-bar \
+        "$NEO4J_DOWNLOAD_URL"
+fi
+
+# Create a temporary directory to unpack the tarball and rename the
+# directory to the specified ENVPATH
+TEMPDIR=`mktemp -d -t ndm`
+cd "$TEMPDIR" && tar zxf "$VERSION_PATH"
+mv "$TEMPDIR/$VERSION_DIRNAME" "$ENVPATH"
+rm -rf "$TEMPDIR"
+echo "Successfully installed a $VERSION build at $ENVPATH"
