@@ -85,6 +85,38 @@ def group_release_versions(versions):
     return groups
 
 
+def check_release_exists(version):
+    """Performs a HEAD request to check whether a particular release is
+    available for download.
+    """
+    url = NEO4J_DOWNLOAD_URL.format(version)
+    request = urllib2.Request(url)
+    request.get_method = lambda: 'HEAD'
+
+    try:
+        response = urllib2.urlopen(request)
+    except urllib2.HTTPError:
+        return False
+    return response.getcode() == 200
+
+
+def download_release(version):
+    url = NEO4J_DOWNLOAD_URL.format(version)
+    filename = os.path.basename(url)
+    request = urllib2.Request(url)
+
+    try:
+        response = urllib2.urlopen(request)
+    except urllib2.HTTPError:
+        return False
+
+    with open(os.path.join(NDM_CACHE, filename), 'wb') as fh:
+        for chunk in response:
+            fh.write(chunk)
+
+    return True
+
+
 @cli(description='Lists the stable release versions of Neo4j')
 def releases(options):
     "Returns a sorted list of stable release versions."
