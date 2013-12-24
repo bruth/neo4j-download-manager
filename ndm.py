@@ -5,7 +5,10 @@ import os
 import re
 import sys
 import json
+import shutil
 import urllib2
+import tempfile
+import subprocess
 from argparse import ArgumentParser, RawDescriptionHelpFormatter, PARSER
 
 
@@ -57,17 +60,21 @@ def cmp_semver(x, y):
 
 # Cache in case these are used multiple times in a command. This prevents
 # redundant API requests.
-release_versions = None
+_release_versions = None
 
 
-def _release_versions():
-    global release_versions
-    if not release_versions:
+def release_versions():
+    global _release_versions
+    if not _release_versions:
         resp = urllib2.urlopen(NEO4J_TAGS_URL)
         tags = [t['name'] for t in json.load(resp)]
         stable = filter(lambda x: stable_tag.match(x), tags)
-        release_versions = tuple(sorted(stable, cmp=cmp_semver, reverse=True))
-    return list(release_versions)
+        _release_versions = tuple(sorted(stable, cmp=cmp_semver, reverse=True))
+    return _release_versions
+
+
+def latest_version():
+    return release_versions()[0]
 
 
 def group_release_versions(versions):
@@ -83,6 +90,13 @@ def group_release_versions(versions):
             groups.append(group)
         group.append(version)
     return groups
+
+
+def setup_home():
+    if not os.path.exists(NDM_ENVS):
+        os.makedirs(NDM_ENVS, '0755')
+    if not os.path.exists(NDM_CACHE):
+        os.makedirs(NDM_CACHE, '0755')
 
 
 def check_release_exists(version):
@@ -117,10 +131,38 @@ def download_release(version):
     return True
 
 
+def download_cached(version):
+    "Returns true if the downloaded release is cached."
+    url = NEO4J_DOWNLOAD_URL.format(version)
+    filename = os.path.basename(url)
+    return os.path.exists(os.path.join(NDM_CACHE, filename))
+
+
+def extract_release(version, path):
+    url = NEO4J_DOWNLOAD_URL.format(version)
+    filename = os.path.basename(url)
+    tarpath = os.path.join(NDM_CACHE, filename)
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    tempdir = tempfile.mkdtemp(prefix='ndm')
+
+    # Python tarfile lib fails to read neo4j tar files.. so resort to using
+    # a script call
+    if subprocess.call(['tar', '-C', tempdir, '-zxf', tarpath]):
+        return False
+
+    releasedir = os.listdir(tempdir)[0]
+    os.rename(os.path.join(tempdir, releasedir), path)
+    shutil.rmtree(tempdir)
+    return True
+
+
 @cli(description='Lists the stable release versions of Neo4j')
 def releases(options):
     "Returns a sorted list of stable release versions."
-    versions = _release_versions()
+    versions = release_versions()
     if options.list:
         print('\n'.join(versions))
     else:
@@ -131,9 +173,41 @@ releases.add_argument('-l', '--list', action='store_true',
                       help='Print a flat list instead of groups')
 
 
+@cli(description='Setup a new Neo4j environment')
+def init(options):
+    setup_home()
+    envpath = os.path.join(NDM_ENVS, options.name)
+
+    # Ensure the environment does already exist
+    if os.path.exists(envpath):
+        print('Environment {} already exists.'.format(options.name))
+        sys.exit(1)
+
+    version = options.version
+    if not version:
+        print('No version specified, using {}'.format(version))
+        version = latest_version()
+
+    if not download_cached(version):
+        if not check_release_exists(version):
+            print('{} is not a known release version'.format(version))
+            sys.exit(1)
+        print('Downloading release...'.format(version))
+        download_release(version)
+
+    print('Extracting release...'.format(version))
+    extract_release(version, envpath)
+
+
+init.add_argument('name', help='The name of the environment')
+init.add_argument('--version', help='A specific version of Neo4j. Defaults '
+                                    'to the latest stable.')
+
+
 # Top-level commands
 commands = {
     'releases': releases,
+    'init': init,
 }
 
 
