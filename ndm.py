@@ -127,7 +127,7 @@ def releases(options):
         groups = group_release_versions(versions)
         print('\n'.join([', '.join(group) for group in groups]))
 
-releases.add_argument('--list', action='store_true',
+releases.add_argument('-l', '--list', action='store_true',
                       help='Print a flat list instead of groups')
 
 
