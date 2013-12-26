@@ -1,7 +1,8 @@
 #!/bin/sh
 
 VERSION=$1
-ENVPATH=`pwd`/$2
+PWD=`pwd`
+ENVPATH=$PWD/$2
 
 NDM_HOME="$HOME/.ndm"
 NEO4J_DOWNLOAD_URL="http://dist.neo4j.org/neo4j-community-$VERSION-unix.tar.gz"
@@ -47,4 +48,7 @@ TEMPDIR=`mktemp -d -t ndm`
 cd "$TEMPDIR" && tar zxf "$VERSION_PATH"
 mv "$TEMPDIR/$VERSION_DIRNAME" "$ENVPATH"
 rm -rf "$TEMPDIR"
+
+## Return to original Directory where the script was invoked from.
+cd $PWD
 echo "Successfully installed a $VERSION build at $ENVPATH"
